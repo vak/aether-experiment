@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 """
 Релятивистский расчёт эксперимента Майкельсона-Морли
-с учётом лоренцева сокращения и правильной синхронизации часов.
+с учётом лоренцева сокращения.
+
+Обозначения:
+  L  — собственная длина плеча (в системе покоя интерферометра = лаборатория)
+  v  — скорость лаборатории относительно эфира
+  c  — скорость света
+
+Два расчёта:
+  1. В системе лаборатории (S_lab): c изотропна, L_∥ = L_⊥ = L
+  2. В системе эфира (S_aether): c анизотропна, L_∥ = L/γ, L_⊥ = L
 """
 
 import numpy as np
@@ -13,263 +22,197 @@ class RelativisticMichelsonMorley:
     """
     Релятивистская модель эксперимента Майкельсона-Морли.
 
-    Учитывает:
-    - Лоренцево сокращение длин
-    - Относительность одновременности
-    - Изотропию скорости света в собственной системе отсчёта
+    L — собственная длина плеча (в лаборатории, где интерферометр покоится).
     """
 
-    def __init__(self, L0=11.0, c=299792458.0, wavelength=500e-9):
-        """
-        Параметры:
-            L0: собственная длина плеча (в покое) (метры)
-            c: скорость света (м/с)
-            wavelength: длина волны света (метры)
-        """
-        self.L0 = L0  # собственная длина
-        self.c = c  # скорость света
+    def __init__(self, L=11.0, c=299792458.0, wavelength=500e-9):
+        self.L = L            # собственная длина плеча
+        self.c = c            # скорость света
         self.wavelength = wavelength
 
     def gamma(self, v):
-        """
-        Лоренц-фактор γ = 1/√(1 - v²/c²)
-        """
+        """Лоренц-фактор γ = 1/√(1 - v²/c²)"""
         beta = v / self.c
         if abs(beta) >= 1:
-            raise ValueError("Скорость v должна быть меньше c")
+            raise ValueError("v must be less than c")
         return 1.0 / np.sqrt(1 - beta**2)
 
-    def length_parallel_aether_frame(self, v):
+    # ─── Система эфира (S_aether) ───────────────────────────────
+
+    def length_parallel_aether(self, v):
+        """Длина продольного плеча в системе эфира: L/γ"""
+        return self.L / self.gamma(v)
+
+    def length_perp_aether(self, v):
+        """Длина поперечного плеча в системе эфира: L (не сокращается)"""
+        return self.L
+
+    def time_parallel_aether(self, v):
         """
-        Длина продольного плеча в системе эфира (лоренцево сокращение).
+        Координатное время прохождения света в продольном плече (S_aether).
 
-        L_∥ = L₀ / γ = L₀√(1 - v²/c²)
-
-        Параметры:
-            v: скорость движения лаборатории относительно эфира
-
-        Возвращает:
-            длина продольного плеча в системе эфира
+        T_∥ = (L/γ)/(c-v) + (L/γ)/(c+v) = 2(L/γ)c/(c²-v²) = (2L/c)·γ
         """
-        return self.L0 / self.gamma(v)
+        L_par = self.length_parallel_aether(v)
+        return L_par / (self.c - v) + L_par / (self.c + v)
 
-    def length_perpendicular_aether_frame(self, v):
+    def time_perp_aether(self, v):
         """
-        Длина поперечного плеча в системе эфира (не сокращается).
+        Координатное время прохождения света в поперечном плече (S_aether).
 
-        L_⊥ = L₀
-
-        Параметры:
-            v: скорость движения
-
-        Возвращает:
-            длина поперечного плеча
+        T_⊥ = 2L/√(c²-v²) = (2L/c)·γ
         """
-        return self.L0
+        return 2 * self.L / np.sqrt(self.c**2 - v**2)
 
-    def time_parallel_aether_frame(self, v):
+    def time_difference_aether(self, v):
+        """Разность координатных времён в S_aether. Должна быть ≈0."""
+        return self.time_parallel_aether(v) - self.time_perp_aether(v)
+
+    # ─── Система лаборатории (S_lab) ────────────────────────────
+
+    def time_parallel_lab(self, v):
         """
-        Время прохождения света в продольном плече (система эфира).
+        Время прохождения в продольном плече, измеренное в S_lab.
 
-        С учётом лоренцева сокращения:
-        L_∥ = L₀/γ
-        T_∥ = 2L_∥·c/(c²-v²) = 2(L₀/γ)·c/(c²-v²)
+        Два эквивалентных способа получить результат:
 
-        Упрощая:
-        T_∥ = (2L₀/c)·γ³ (это неточно, давайте пересчитаем)
+        Способ 1 (принцип относительности):
+          В S_lab скорость света изотропна, плечо имеет собственную длину L.
+          T_∥ = 2L/c
 
-        Правильно:
-        T_∥ = L_∥/(c-v) + L_∥/(c+v) = 2L_∥c/(c²-v²)
-        где L_∥ = L₀√(1-v²/c²)
+        Способ 2 (пересчёт из S_aether):
+          T_∥^(aether) = (2L/c)·γ  (координатное время в эфире)
+          T_∥^(lab) = T_∥^(aether) / γ = 2L/c  (замедление времени)
 
-        Параметры:
-            v: скорость движения
-
-        Возвращает:
-            время прохождения
+        Оба способа дают один ответ.
         """
-        L_par = self.length_parallel_aether_frame(v)
-        return 2 * L_par * self.c / (self.c**2 - v**2)
+        # Вычисляем через пересчёт из S_aether (способ 2) для прозрачности:
+        return self.time_parallel_aether(v) / self.gamma(v)
 
-    def time_perpendicular_aether_frame(self, v):
+    def time_perp_lab(self, v):
         """
-        Время прохождения света в поперечном плече (система эфира).
+        Время прохождения в поперечном плече, измеренное в S_lab.
 
-        T_⊥ = 2L₀/√(c²-v²) = (2L₀/c)·γ
-
-        Параметры:
-            v: скорость движения
-
-        Возвращает:
-            время прохождения
+        T_⊥^(aether) = (2L/c)·γ
+        T_⊥^(lab) = T_⊥^(aether) / γ = 2L/c
         """
-        L_perp = self.length_perpendicular_aether_frame(v)
-        return 2 * L_perp / np.sqrt(self.c**2 - v**2)
+        return self.time_perp_aether(v) / self.gamma(v)
 
-    def time_difference_aether_frame(self, v):
-        """
-        Разность времён в системе эфира (с учётом лоренцева сокращения).
-        """
-        return self.time_parallel_aether_frame(v) - self.time_perpendicular_aether_frame(v)
+    def time_difference_lab(self, v):
+        """Разность времён в S_lab. Должна быть ≈0."""
+        return self.time_parallel_lab(v) - self.time_perp_lab(v)
 
-    def time_lab_frame(self, v):
+    def fringe_shift(self, v):
         """
-        Время прохождения в системе лаборатории.
+        Сдвиг полос (наблюдаемая величина, не зависит от выбора СО).
 
-        В собственной системе отсчёта лаборатории:
-        - Скорость света изотропна: c
-        - Оба плеча имеют одинаковую собственную длину: L₀
-        - Времена: T_∥ = T_⊥ = 2L₀/c
-
-        Параметры:
-            v: скорость (не используется в собственной системе!)
-
-        Возвращает:
-            время прохождения (одинаковое для обоих плеч)
+        При повороте на 90° сдвиг удваивается: δ = 2·c·ΔT/λ
         """
-        # В собственной системе отсчёта скорость света изотропна!
-        return 2 * self.L0 / self.c
-
-    def fringe_shift_aether_frame(self, v):
-        """
-        Сдвиг полос, рассчитанный в системе эфира (с лоренцевым сокращением).
-        """
-        dt = self.time_difference_aether_frame(v)
-        path_diff = self.c * dt
-        return 2 * path_diff / self.wavelength
-
-    def fringe_shift_lab_frame(self, v):
-        """
-        Сдвиг полос в системе лаборатории.
-
-        Результат: ВСЕГДА НОЛЬ!
-        Потому что T_∥ = T_⊥ = 2L₀/c
-        """
-        # В собственной системе времена одинаковы
-        return 0.0
+        dt = self.time_difference_lab(v)
+        return 2 * abs(self.c * dt) / self.wavelength
 
 
 def compare_classical_and_relativistic():
-    """
-    Сравнение классического и релятивистского расчётов.
-    """
+    """Сравнение классического и релятивистского расчётов."""
     print("=" * 70)
     print("СРАВНЕНИЕ КЛАССИЧЕСКОГО И РЕЛЯТИВИСТСКОГО РАСЧЁТОВ")
     print("=" * 70)
     print()
 
-    L0 = 11.0
+    L = 11.0
     c = 299792458.0
     wavelength = 500e-9
-    v_earth = 30000.0
+    v = 30000.0
 
-    classical = ClassicalMichelsonMorley(L=L0, c=c, wavelength=wavelength)
-    relativistic = RelativisticMichelsonMorley(L0=L0, c=c, wavelength=wavelength)
+    cl = ClassicalMichelsonMorley(L=L, c=c, wavelength=wavelength)
+    rel = RelativisticMichelsonMorley(L=L, c=c, wavelength=wavelength)
 
-    print("Параметры:")
-    print(f"  L₀ = {L0} м, c = {c:.0f} м/с, λ = {wavelength*1e9:.1f} нм")
-    print(f"  v = {v_earth:.0f} м/с (скорость Земли)")
-    print(f"  v/c = {v_earth/c:.2e}")
+    print(f"Параметры: L = {L} м, c = {c:.0f} м/с, λ = {wavelength*1e9:.1f} нм")
+    print(f"           v = {v:.0f} м/с (~{v/1000:.0f} км/с), v/c = {v/c:.2e}")
     print()
 
-    # Классический расчёт
-    print("КЛАССИЧЕСКИЙ РАСЧЁТ (без лоренцева сокращения):")
-    print(f"  Длина продольного плеча: L_∥ = {L0} м")
-    print(f"  Длина поперечного плеча: L_⊥ = {L0} м")
-    t_par_cl = classical.time_parallel(v_earth)
-    t_perp_cl = classical.time_perpendicular(v_earth)
-    dt_cl = classical.time_difference(v_earth)
-    shift_cl = classical.fringe_shift(v_earth)
-    print(f"  Время T_∥ = {t_par_cl:.15e} с")
-    print(f"  Время T_⊥ = {t_perp_cl:.15e} с")
-    print(f"  Разность ΔT = {dt_cl:.15e} с")
-    print(f"  Сдвиг полос: δ = {shift_cl:.6f} λ")
+    # ── Классический расчёт ──
+    print("КЛАССИЧЕСКИЙ РАСЧЁТ (ошибка: L_∥ = L в системе эфира)")
+    print("-" * 70)
+    t_par_cl = cl.time_parallel(v)
+    t_perp_cl = cl.time_perpendicular(v)
+    dt_cl = cl.time_difference(v)
+    shift_cl = cl.fringe_shift(v)
+    print(f"  L_∥^(aether) = {L} м  (неверно! должно быть L/γ)")
+    print(f"  T_∥ = {t_par_cl:.15e} с = (2L/c)·γ²")
+    print(f"  T_⊥ = {t_perp_cl:.15e} с = (2L/c)·γ")
+    print(f"  ΔT  = {dt_cl:.4e} с")
+    print(f"  Сдвиг полос: δ = {shift_cl:.4f} λ")
     print()
 
-    # Релятивистский расчёт (система эфира)
-    print("РЕЛЯТИВИСТСКИЙ РАСЧЁТ (система эфира, с лоренцевым сокращением):")
-    L_par_rel = relativistic.length_parallel_aether_frame(v_earth)
-    L_perp_rel = relativistic.length_perpendicular_aether_frame(v_earth)
-    print(f"  Длина продольного плеча: L_∥ = {L_par_rel:.12f} м")
-    print(f"  Длина поперечного плеча: L_⊥ = {L_perp_rel:.12f} м")
-    print(f"  Сокращение: ΔL = {L0 - L_par_rel:.2e} м")
-    t_par_rel = relativistic.time_parallel_aether_frame(v_earth)
-    t_perp_rel = relativistic.time_perpendicular_aether_frame(v_earth)
-    dt_rel = relativistic.time_difference_aether_frame(v_earth)
-    shift_rel_aether = relativistic.fringe_shift_aether_frame(v_earth)
-    print(f"  Время T_∥ = {t_par_rel:.15e} с")
-    print(f"  Время T_⊥ = {t_perp_rel:.15e} с")
-    print(f"  Разность ΔT = {dt_rel:.15e} с")
-    print(f"  Сдвиг полос: δ = {shift_rel_aether:.6f} λ")
+    # ── Релятивистский расчёт: система эфира ──
+    print("РЕЛЯТИВИСТСКИЙ: система эфира (с лоренцевым сокращением)")
+    print("-" * 70)
+    g = rel.gamma(v)
+    L_par = rel.length_parallel_aether(v)
+    t_par = rel.time_parallel_aether(v)
+    t_perp = rel.time_perp_aether(v)
+    dt_aether = rel.time_difference_aether(v)
+    print(f"  γ = {g:.12f}")
+    print(f"  L_∥^(aether) = L/γ = {L_par:.12f} м")
+    print(f"  L_⊥^(aether) = L   = {L} м")
+    print(f"  T_∥ = {t_par:.15e} с = (2L/c)·γ")
+    print(f"  T_⊥ = {t_perp:.15e} с = (2L/c)·γ")
+    print(f"  ΔT  = {dt_aether:.4e} с")
+    expected = 2 * L / c * g
+    print(f"  Проверка: (2L/c)·γ = {expected:.15e} с")
     print()
 
-    # Релятивистский расчёт (система лаборатории)
-    print("РЕЛЯТИВИСТСКИЙ РАСЧЁТ (система лаборатории, собственная СО):")
-    print(f"  Длина продольного плеча: L_∥ = {L0} м (собственная длина)")
-    print(f"  Длина поперечного плеча: L_⊥ = {L0} м (собственная длина)")
-    print(f"  Скорость света: c = {c:.0f} м/с (изотропна!)")
-    t_lab = relativistic.time_lab_frame(v_earth)
-    print(f"  Время T_∥ = {t_lab:.15e} с")
-    print(f"  Время T_⊥ = {t_lab:.15e} с")
-    print(f"  Разность ΔT = 0 с (точно!)")
-    shift_lab = relativistic.fringe_shift_lab_frame(v_earth)
-    print(f"  Сдвиг полос: δ = {shift_lab:.6f} λ")
+    # ── Релятивистский расчёт: система лаборатории ──
+    print("РЕЛЯТИВИСТСКИЙ: система лаборатории (пересчёт из S_aether)")
+    print("-" * 70)
+    t_par_lab = rel.time_parallel_lab(v)
+    t_perp_lab = rel.time_perp_lab(v)
+    dt_lab = rel.time_difference_lab(v)
+    shift = rel.fringe_shift(v)
+    print(f"  T_∥^(lab) = T_∥^(aether)/γ = {t_par_lab:.15e} с")
+    print(f"  T_⊥^(lab) = T_⊥^(aether)/γ = {t_perp_lab:.15e} с")
+    print(f"  Проверка: 2L/c = {2*L/c:.15e} с")
+    print(f"  ΔT  = {dt_lab:.4e} с")
+    print(f"  Сдвиг полос: δ = {shift:.6f} λ")
     print()
 
+    # ── Итог ──
     print("=" * 70)
-    print("ВЫВОДЫ:")
+    print("ИТОГ:")
     print("=" * 70)
     print()
-    print("1. КЛАССИЧЕСКИЙ расчёт предсказывает сдвиг ~{:.3f} λ".format(shift_cl))
-    print("   (не согласуется с экспериментом!)")
+    print(f"  Классический расчёт:      δ = {shift_cl:.4f} λ (ошибка: L вместо L/γ)")
+    print(f"  Релятивистский расчёт:    δ = {shift:.6f} λ (корректно)")
+    print(f"  Эксперимент Майкельсона:  δ < 0.01 λ")
     print()
-    print("2. РЕЛЯТИВИСТСКИЙ расчёт (система эфира):")
-    print("   - Учитывает лоренцево сокращение продольного плеча")
-    print("   - Всё ещё предсказывает ненулевой сдвиг ~{:.3f} λ".format(shift_rel_aether))
-    print("   - НО: это время измерено в системе эфира!")
-    print()
-    print("3. РЕЛЯТИВИСТСКИЙ расчёт (система лаборатории):")
-    print("   - В собственной СО скорость света ИЗОТРОПНА (по определению!)")
-    print("   - Времена прохождения ОДИНАКОВЫ")
-    print("   - Сдвиг полос = 0 (точно!)")
-    print("   - СОГЛАСУЕТСЯ С ЭКСПЕРИМЕНТОМ!")
-    print()
-    print("КЛЮЧЕВОЙ МОМЕНТ:")
-    print("  Интерферометр покоится в ЛАБОРАТОРИИ.")
-    print("  Мы наблюдаем интерференцию В ЛАБОРАТОРИИ.")
-    print("  Поэтому нужно использовать расчёт в системе ЛАБОРАТОРИИ!")
-    print()
-    print("  В системе лаборатории скорость света ИЗОТРОПНА")
-    print("  (это следствие определения синхронизации часов),")
-    print("  поэтому сдвиг полос ВСЕГДА РАВЕН НУЛЮ!")
+    print("  Ошибка классического расчёта: использование собственной длины L")
+    print("  вместо сокращённой L/γ при вычислении в системе эфира.")
+    print("  Это эквивалентно смешению величин из разных систем отсчёта.")
     print()
 
 
 def plot_lorentz_contraction():
-    """
-    График зависимости длины от скорости (лоренцево сокращение).
-    """
-    rel = RelativisticMichelsonMorley(L0=11.0)
+    """График лоренцева сокращения."""
+    rel = RelativisticMichelsonMorley(L=11.0)
 
     velocities = np.linspace(0, 0.9*rel.c, 1000)
 
-    lengths_parallel = [rel.length_parallel_aether_frame(v) for v in velocities]
-    lengths_perp = [rel.length_perpendicular_aether_frame(v) for v in velocities]
+    lengths_par = [rel.length_parallel_aether(v) for v in velocities]
+    lengths_perp = [rel.length_perp_aether(v) for v in velocities]
     gammas = [rel.gamma(v) for v in velocities]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    # Левый график: длины
-    ax1.plot(velocities/rel.c, lengths_parallel, 'b-', linewidth=2, label='L_∥ (продольное)')
+    ax1.plot(velocities/rel.c, lengths_par, 'b-', linewidth=2, label='L_∥ (продольное)')
     ax1.plot(velocities/rel.c, lengths_perp, 'r--', linewidth=2, label='L_⊥ (поперечное)')
     ax1.axvline(x=30000/rel.c, color='gray', linestyle=':', alpha=0.7, label='v_Земли')
     ax1.set_xlabel('v/c', fontsize=12)
-    ax1.set_ylabel('Длина плеча (м)', fontsize=12)
+    ax1.set_ylabel('Длина плеча в S_aether (м)', fontsize=12)
     ax1.set_title('Лоренцево сокращение длин', fontsize=13, weight='bold')
     ax1.grid(True, alpha=0.3)
     ax1.legend(fontsize=10)
 
-    # Правый график: γ-фактор
     ax2.plot(velocities/rel.c, gammas, 'purple', linewidth=2)
     ax2.axvline(x=30000/rel.c, color='gray', linestyle=':', alpha=0.7)
     ax2.set_xlabel('v/c', fontsize=12)
@@ -285,38 +228,36 @@ def plot_lorentz_contraction():
 
 
 def plot_comparison():
-    """
-    Сравнительный график классического и релятивистского предсказаний.
-    """
-    classical = ClassicalMichelsonMorley(L=11.0)
-    relativistic = RelativisticMichelsonMorley(L0=11.0)
+    """Сравнительный график классического и релятивистского предсказаний."""
+    cl = ClassicalMichelsonMorley(L=11.0)
+    rel = RelativisticMichelsonMorley(L=11.0)
 
-    velocities = np.linspace(0, 100000, 1000)
+    velocities = np.linspace(1, 100000, 1000)
 
-    shift_classical = [classical.fringe_shift(v) for v in velocities]
-    shift_rel_aether = [relativistic.fringe_shift_aether_frame(v) for v in velocities]
-    shift_rel_lab = [relativistic.fringe_shift_lab_frame(v) for v in velocities]
+    shift_classical = [cl.fringe_shift(v) for v in velocities]
+    shift_relativistic = [rel.fringe_shift(v) for v in velocities]
 
     plt.figure(figsize=(10, 6))
     plt.plot(velocities/1000, shift_classical, 'b-', linewidth=2.5,
-             label='Классический (без сокращения)')
-    plt.plot(velocities/1000, shift_rel_aether, 'orange', linewidth=2,
-             linestyle='--', label='Релятивистский (система эфира)')
-    plt.plot(velocities/1000, shift_rel_lab, 'g-', linewidth=3,
-             label='Релятивистский (система лаборатории)')
+             label='Классический (L_∥ = L, ошибочный)')
+    plt.plot(velocities/1000, shift_relativistic, 'g-', linewidth=2.5,
+             label='Релятивистский (L_∥ = L/γ, корректный)')
 
-    plt.axvline(x=30, color='r', linestyle=':', linewidth=2, alpha=0.7, label='v_Земли (~30 км/с)')
-    plt.axhline(y=0.01, color='gray', linestyle='-.', linewidth=1, alpha=0.5, label='Предел обнаружения')
+    plt.axvline(x=30, color='r', linestyle=':', linewidth=2, alpha=0.7,
+                label='v_Земли (~30 км/с)')
+    plt.axhline(y=0.01, color='gray', linestyle='-.', linewidth=1, alpha=0.5,
+                label='Предел обнаружения')
     plt.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
 
     v_earth = 30000
-    shift_cl = classical.fringe_shift(v_earth)
-    plt.plot(v_earth/1000, shift_cl, 'bo', markersize=10)
-    plt.text(v_earth/1000 + 2, shift_cl, f'{shift_cl:.3f} λ', fontsize=10, va='center')
+    shift_cl_earth = cl.fringe_shift(v_earth)
+    plt.plot(v_earth/1000, shift_cl_earth, 'bo', markersize=10)
+    plt.text(v_earth/1000 + 2, shift_cl_earth, f'{shift_cl_earth:.3f} λ',
+             fontsize=10, va='center')
 
     plt.xlabel('Скорость относительно эфира (км/с)', fontsize=12)
     plt.ylabel('Сдвиг интерференционных полос (λ)', fontsize=12)
-    plt.title('Сравнение предсказаний: классика vs релятивизм', fontsize=14, weight='bold')
+    plt.title('Классический vs релятивистский расчёт', fontsize=14, weight='bold')
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=10, loc='upper left')
     plt.ylim([-0.05, max(shift_classical)*1.1])
@@ -328,10 +269,7 @@ def plot_comparison():
 
 
 if __name__ == "__main__":
-    # Сравнительный анализ
     compare_classical_and_relativistic()
-
-    # Графики
     print("\nГенерация графиков...")
     plot_lorentz_contraction()
     plot_comparison()
